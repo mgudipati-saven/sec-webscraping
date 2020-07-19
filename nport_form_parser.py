@@ -51,7 +51,7 @@ def parse_nport_form(filing_url):
 base_url = r"https://www.sec.gov/Archives/edgar/daily-index"
 year = '2020'
 qtr = 'QTR3'
-date = '20200718'
+date = '20200717'
 
 # download the master index file
 file_url = make_url(base_url, [year, qtr, 'master.{}.idx'.format(date)])
