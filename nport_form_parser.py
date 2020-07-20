@@ -97,19 +97,18 @@ for index, row in df_nport.iterrows():
     nport_data['company_name'] = row['Company Name']
 
     # save each NPORT form data into it's own file
-    file_name = 'NPORT-P_{}_{}_{}'.format(nport_data['filing_date'],
+    file_name = 'NPORT-P_{}_{}_{}.csv'.format(nport_data['filing_date'],
                                           nport_data['company_name'],
                                           nport_data['series_name'])
     file = os.sep.join(['.', 'output', file_name])
     with open(file, 'w') as f:
         # write the first header row
-        # As of Date	Filing Date	CIK Number	Series Number	Series name	Total Stocks Value	Total Assets	Total net Assets	Series Ticker1
+        # As of Date	Filing Date	CIK Number	Series Number	Series name	Total Assets	Total net Assets	Series Ticker1
         header_1 = ['As of Date',
                     'Filing Date',
                     'CIK Number',
                     'Series Number',
                     'Series name',
-                    'Total Stocks Value',
                     'Total Assets',
                     'Total net Assets'
                     ] + ['Series Ticker{}'.format(i + 1) for i in range(len(nport_data['series_tickers']))]
@@ -123,7 +122,6 @@ for index, row in df_nport.iterrows():
                  str(nport_data['cik_number']),
                  str(nport_data['series_number']),
                  nport_data['series_name'],
-                 '',
                  str(nport_data['total_assets']),
                  str(nport_data['net_assets'])
                  ] + [ticker for ticker in nport_data['series_tickers']]
@@ -132,18 +130,15 @@ for index, row in df_nport.iterrows():
 
         # write the second header row
         # Filing Classification	Holding Type	Holding Name	Holding Share	Holding Value	Holding Face Amt	Holding Number Of Contracts	Future Gain Or Loss
-        header_2 = 'Filing Classification|Holding Type|Holding Name|Holding Share|Holding Value|Holding Face Amt|Holding Number Of Contracts|Future Gain Or Loss'
+        header_2 = 'Holding Name|Holding Share|Holding Value'
         f.write(header_2)
         f.write('\n')
 
         # write the holdings rows
         for holding in nport_data['holdings']:
-            row = '{}|{}|{}|{}|{}|0|0|0'.format(holding['holding_type'],
-                                                holding['holding_type'],
-                                                holding['holding_name'],
-                                                holding['holding_share'],
-                                                holding['holding_value']
-                                                )
+            row = '{}|{}|{}'.format(holding['holding_title'] if holding['holding_name'] == 'N/A' else holding['holding_name'],
+                                    holding['holding_share'],
+                                    holding['holding_value'])
             f.write(row)
             f.write('\n')
         print("Created ", file_name)

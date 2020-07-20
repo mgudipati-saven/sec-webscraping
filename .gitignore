@@ -130,3 +130,6 @@ dmypy.json
 
 input/
 output/
+
+**/.idea/workspace.xml 
+**/.idea/tasks.xml
