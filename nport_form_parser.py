@@ -3,14 +3,9 @@ import requests
 import pandas as pd
 import os
 import json
+import time
 from bs4 import BeautifulSoup
 
-
-# configure the parameters to build the master index file url
-base_url = r"https://www.sec.gov/Archives/edgar/daily-index"
-year = '2020'
-qtr = 'QTR3'
-date = '20200717'
 
 # define a function that will make the process of building a url easy.
 def make_url(base_url, comp):
@@ -60,6 +55,31 @@ def parse_nport_form(filing_url):
     return doc_dict
 
 
+# download a filing if it doesn't exist
+def download_filing(filing_url):
+    file_name = 'master.{}.idx'.format(date)
+    file = os.sep.join(['.', 'input', 'master.{}.idx'.format(date)])
+    err = False
+
+    # check if the file exists, so we don't need to request it again.
+    if not os.path.exists(file):
+        # file does not exist, download...
+        file_url = make_url(base_url, [year, qtr, file_name])
+        resp = requests.get(file_url)
+        if resp.status_code == 200:
+            print("Downloaded ", file_url)
+
+            # we can always write the content to a file, so we don't need to request it again.
+            with open(file, 'wb') as f:
+                f.write(resp.content)
+        else:
+            print("Failed to download ", file_url)
+            print(resp)
+            err = True
+
+    return err, file
+
+
 # define a function to download the master index file
 def download_master_index_file(date):
     file_name = 'master.{}.idx'.format(date)
@@ -95,17 +115,17 @@ def process_master_index_file(file):
     base_url = r"https://www.sec.gov/Archives"
     for index, row in df_nport.iterrows():
         filing_url = make_url(base_url, [row['File Name']])
-        nport_data = parse_nport_form(filing_url)
+        nport_dict = parse_nport_form(filing_url)
         print("Parsed ", filing_url)
 
         # add the filing date
-        nport_data['filing_date'] = row['Date Filed'].strftime('%Y-%m-%d')
+        nport_dict['filing_date'] = row['Date Filed'].strftime('%Y-%m-%d')
 
         # add the company name
-        nport_data['company_name'] = row['Company Name']
+        nport_dict['company_name'] = row['Company Name']
 
-        # save as JSON file
-        save_as_json_file(nport_data)
+        # return the dictionary object
+        yield nport_dict
 
 # define a function to save NPORT form in JSON file format
 def save_as_json_file(nport_data):
@@ -169,6 +189,44 @@ def save_as_ray_meadows_file(nport_data):
         print("Created ", file_name)
 
 
-err, file = download_master_index_file(date)
+# define a function to save NPORT form data in csv file format
+def save_as_csv_file(file, nport_data):
+    with open(file, 'w') as f:
+        # write the header row
+        # Holding Type	Holding Name	Holding Share	Holding Value
+        header = 'Holding Name|Holding Share|Holding Value'
+        f.write(header)
+        f.write('\n')
+
+        # write the holdings rows
+        for holding in nport_data['holdings']:
+            row = '{}|{}|{}'.format(
+                holding['holding_title'] if holding['holding_name'] == 'N/A' else holding['holding_name'],
+                round(holding['holding_share']),
+                round(holding['holding_value']))
+            f.write(row)
+            f.write('\n')
+
+
+# configure the parameters to build the master index file url
+base_url = r"https://www.sec.gov/Archives/edgar/daily-index"
+year = '2020'
+qtr = 'QTR3'
+date = '20200723'
+
+# download master index file for the given date
+err, idx_file = download_master_index_file(date)
 if not err:
-    process_master_index_file(file)
+    # process the master index file
+    for data in process_master_index_file(idx_file):
+        # save each NPORT form data into it's own file
+        file_name = 'NPORT-P_{}_{}_{}.csv'.format(data['filing_date'],
+                                                  data['company_name'],
+                                                  data['series_name'])
+        file = os.sep.join(['.', 'output', file_name])
+
+        save_as_csv_file(file, data)
+        print("Created ", file)
+        time.sleep(1)
+
+
