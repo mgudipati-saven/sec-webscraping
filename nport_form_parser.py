@@ -5,6 +5,16 @@ import os
 import json
 import time
 from bs4 import BeautifulSoup
+from tinydb import TinyDB, Query
+
+
+# init the tinydb database to store processed filings
+db = TinyDB('db.json')
+processed_filings_table = db.table('processed_filings')
+
+# define a function to clean file name. replace '/' with '-'
+def clean_filename(filename):
+    return filename.replace("/", "-")
 
 
 # define a function that will make the process of building a url easy.
@@ -115,17 +125,24 @@ def process_master_index_file(file):
     base_url = r"https://www.sec.gov/Archives"
     for index, row in df_nport.iterrows():
         filing_url = make_url(base_url, [row['File Name']])
-        nport_dict = parse_nport_form(filing_url)
-        print("Parsed ", filing_url)
 
-        # add the filing date
-        nport_dict['filing_date'] = row['Date Filed'].strftime('%Y-%m-%d')
+        # check if the filings has been processed already
+        if not processed_filings_table.contains(Query().url == filing_url):
+            print("Filing not processed, downloading...", filing_url)
+            nport_dict = parse_nport_form(filing_url)
+            print("Parsed ", filing_url)
 
-        # add the company name
-        nport_dict['company_name'] = row['Company Name']
+            # add the filing date
+            nport_dict['filing_date'] = row['Date Filed'].strftime('%Y-%m-%d')
 
-        # return the dictionary object
-        yield nport_dict
+            # add the company name
+            nport_dict['company_name'] = row['Company Name']
+
+            # flag the filings as processed
+            processed_filings_table.insert({'url': filing_url})
+
+            # return the dictionary object
+            yield nport_dict
 
 # define a function to save NPORT form in JSON file format
 def save_as_json_file(nport_data):
@@ -194,13 +211,13 @@ def save_as_csv_file(file, nport_data):
     with open(file, 'w') as f:
         # write the header row
         # Holding Type	Holding Name	Holding Share	Holding Value
-        header = 'Holding Name|Holding Share|Holding Value'
+        header = 'Holding Name,Holding Share,Holding Value'
         f.write(header)
         f.write('\n')
 
         # write the holdings rows
         for holding in nport_data['holdings']:
-            row = '{}|{}|{}'.format(
+            row = '"{}",{},{}'.format(
                 holding['holding_title'] if holding['holding_name'] == 'N/A' else holding['holding_name'],
                 round(holding['holding_share']),
                 round(holding['holding_value']))
@@ -212,21 +229,22 @@ def save_as_csv_file(file, nport_data):
 base_url = r"https://www.sec.gov/Archives/edgar/daily-index"
 year = '2020'
 qtr = 'QTR3'
-date = '20200723'
+dates = ['20200728', '20200727']
 
-# download master index file for the given date
-err, idx_file = download_master_index_file(date)
-if not err:
-    # process the master index file
-    for data in process_master_index_file(idx_file):
-        # save each NPORT form data into it's own file
-        file_name = 'NPORT-P_{}_{}_{}.csv'.format(data['filing_date'],
-                                                  data['company_name'],
-                                                  data['series_name'])
-        file = os.sep.join(['.', 'output', file_name])
+# download master index files for the given dates
+for date in dates:
+    err, idx_file = download_master_index_file(date)
+    if not err:
+        # process the master index file
+        for data in process_master_index_file(idx_file):
+            # save each NPORT form data into it's own file
+            file_name = 'NPORT-P_{}_{}_{}.csv'.format(data['filing_date'],
+                                                      data['company_name'],
+                                                      data['series_name'])
+            file = os.sep.join(['.', 'output', clean_filename(file_name)])
 
-        save_as_csv_file(file, data)
-        print("Created ", file)
-        time.sleep(1)
+            save_as_csv_file(file, data)
+            print("Created ", file)
+            time.sleep(1)
 
-
+db.close()
